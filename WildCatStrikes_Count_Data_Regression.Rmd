@@ -1,0 +1,167 @@
+---
+title: "Wildcat Strikes"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r}
+library(dplyr)
+
+```
+> Reading the dataset into a dataframe
+
+```{r}
+wildcat<-read.csv('/Users/apple/Gdrive/Term1/SA3/Assignment/wildcat.csv',header=TRUE)
+```
+> Question (a) - Exploration of Dataset:
+
++ Grievances is a discrete variable (numeric count data). This is highly skewed to the right
++ Rotate, Union are binary variable to describe if Rotation is allowed & if the mine is registered as a Union
++ Workforce is a discrete variable (numeric count data). This variable is highly skewed to the right
++ Log.workforce is a continous and normalized variable
++ Wildcat.Strikes is a discrete variable (numeric count data). This variable is highly skewed to the right
+
+
+```{r}
+summary(wildcat)
+```
+```{r}
+#install.packages('e1071')
+library(e1071)
+skewness(wildcat$Grievances)
+hist(wildcat$Grievances)
+hist(wildcat$Workforce)
+hist(wildcat$Wildcat.strikes)
+```
+```{r}
+boxplot(wildcat$Log.workforce)
+```
+> Question (a):
+
+* **There is one mine (Mine # 163), where is there is excessive number of strikes. It is 1.5 times, the # of strikes to the second best mine ** 
+
+```{r}
+barplot(wildcat$Wildcat.strikes)
+```
+> Question (b):
+
+* Total number of wildcat strikes are higher in mines which have unions. To state there are 389 wilcat strikes in Unionized mines, and only 20 strikes in non-Union mines.
+* This could also be confirmed that in the non-Unionized mines - the average number of wildcat strikes is 0.345, where as in the Unionized it is 3.70
+* While, the total number of strikes in non-Rotatable mines is higher than that of the Rotatable mines, the difference is not higher
+```{r}
+count(wildcat,wildcat$Union)
+aggregate(Wildcat.strikes~Union, data=wildcat, mean)
+wildcat %>% group_by(Union) %>% summarise_all(sum) %>% select(Union,Wildcat.strikes)
+wildcat %>% group_by(Rotate) %>% summarise_all(sum) %>% select(Rotate,Wildcat.strikes)
+aggregate(Wildcat.strikes~Rotate, data=wildcat, mean)
+
+plot(wildcat$Workforce,wildcat$Wildcat.strikes)
+
+```
+
+```{r}
+model1<-glm(Wildcat.strikes~ Grievances + Rotate + Union + Workforce,family = poisson(link="log"),data=wildcat)
+summary(model1)
+```
+> Question (c):
+
+* Model has been fit with Poisson distribution
+* From the initial analysis, the model seems to be fitting decently. However there is an overdispersion (proved in the subsequent questions)
+* Chi-square value and the plots have been drawn to derive the conclusion given below.
+
+```{r}
+model2<-glm(Wildcat.strikes~ Grievances + Rotate + Union + Log.workforce,family = poisson(link="log"),data=wildcat)
+summary(model2)
+```
+
+```{r}
+library(MASS)
+library(car)
+StudentResidualPlot <- function(model, comment){
+  stu.resid <- studres(model)  
+  hist(stu.resid, freq=FALSE,     
+       main=comment) 
+  xfit<-seq(min(stu.resid),max(stu.resid),length=80)  
+  yfit<-dnorm(xfit)  
+  lines(xfit, yfit)
+  
+}
+
+CustomResidualPlot<- function(model){
+  residualPlot(model, id.n=5)
+  residualPlots(model,id.n=3)
+}
+
+DeletionDiagonsitics<- function(model, cutoff){
+  influencePlot(model,id.n=3) # A user friendly representation of the above
+  plot(model, which=4, cook.levels=cutoff)
+}
+```
+
+```{r}
+#StudentResidualPlot(model2,'Model2')
+#CustomResidualPlot(model2)
+#DeletionDiagonsitics(model2,2)
+#residualPlot(model2)
+#influencePlot(model2,id.n=3)
+par(mfrow=c(2,2))
+plot(model2)
+
+```
+
+```{r}
+pchisq(model2$deviance, df=model2$df.residual, lower.tail=FALSE)
+
+
+```
+```{r}
+#install.packages('pscl')
+```
+```{r}
+model3<-glm(Wildcat.strikes~ Grievances + Rotate + Union + Log.workforce,family = quasipoisson(link="log"),data=wildcat)
+summary(model3)
+```
+```{r}
+pchisq(model3$deviance, df=model3$df.residual, lower.tail=FALSE)
+
+```
+```{r}
+#install.packages('AER')
+```
+> Question (d) : Overdispersion
+
+* There is a very clear over-dispersion from the below statistic, where the variance is approximately 3 times to that of the mean
+
+```{r}
+library(AER)
+dispersiontest(model2)
+```
+
+> Question (e): Other models 
+
+* Trying with other models - Negative Binomial & Zero Inflated.
+* negbin and zero infalted provide better fit to the data than poission, as explained below
+
+
+```{r}
+model4<-glm.nb(Wildcat.strikes~ Grievances + Rotate + Union + Log.workforce,data=wildcat)
+summary(model4)
+
+```
+
+```{r}
+with(wildcat, cbind(res.deviance=model4$deviance, df=model4$df.residual, p=pchisq(model4$deviance, model4$df.residual, lower.tail=FALSE)))
+
+```
+```{r}
+#ZINB=zeroinfl(Wildcat.strikes~ Grievances + Rotate + Union + Log.workforce, data = na.omit(wildcat), dist = "negbin")
+#summary(ZINB)
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(model4)
+```
+
